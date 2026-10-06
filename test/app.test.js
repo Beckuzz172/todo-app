@@ -3,11 +3,54 @@ const assert = require("node:assert/strict");
 const request = require("supertest");
 
 const app = require("../server");
-const db = require("../database");
+const { db, ready } = require("../database");
 
+async function resetTestTasks() {
+    await ready;
 
-// LOGIN TEST
+    const aliceResult = await db.execute({
+        sql: "SELECT id FROM users WHERE username = ?",
+        args: ["alice"]
+    });
+
+    const bobResult = await db.execute({
+        sql: "SELECT id FROM users WHERE username = ?",
+        args: ["bob"]
+    });
+
+    const aliceId = aliceResult.rows[0].id;
+    const bobId = bobResult.rows[0].id;
+
+    await db.execute("DELETE FROM tasks");
+
+    await db.execute({
+        sql: `
+            INSERT INTO tasks (user_id, title, completed)
+            VALUES (?, ?, ?)
+        `,
+        args: [aliceId, "Finish homework", 1]
+    });
+
+    await db.execute({
+        sql: `
+            INSERT INTO tasks (user_id, title, completed)
+            VALUES (?, ?, ?)
+        `,
+        args: [aliceId, "Buy coffee", 0]
+    });
+
+    await db.execute({
+        sql: `
+            INSERT INTO tasks (user_id, title, completed)
+            VALUES (?, ?, ?)
+        `,
+        args: [bobId, "Study for exam", 0]
+    });
+}
+
 test("Alice can log in with the correct password", async () => {
+    await resetTestTasks();
+
     const agent = request.agent(app);
 
     const response = await agent
@@ -21,8 +64,6 @@ test("Alice can log in with the correct password", async () => {
     assert.equal(response.body.username, "alice");
 });
 
-
-// WRONG PASSWORD TEST
 test("Login fails with an incorrect password", async () => {
     const response = await request(app)
         .post("/api/login")
@@ -34,8 +75,6 @@ test("Login fails with an incorrect password", async () => {
     assert.equal(response.status, 401);
 });
 
-
-// USER MUST BE LOGGED IN
 test("Task list cannot be accessed without login", async () => {
     const response = await request(app)
         .get("/api/tasks");
@@ -43,9 +82,9 @@ test("Task list cannot be accessed without login", async () => {
     assert.equal(response.status, 401);
 });
 
-
-// ALICE ONLY SEES ALICE'S TASKS
 test("Alice only sees her own tasks", async () => {
+    await resetTestTasks();
+
     const agent = request.agent(app);
 
     await agent
@@ -66,9 +105,9 @@ test("Alice only sees her own tasks", async () => {
     assert.ok(!titles.includes("Study for exam"));
 });
 
-
-// BOB ONLY SEES BOB'S TASKS
 test("Bob only sees his own tasks", async () => {
+    await resetTestTasks();
+
     const agent = request.agent(app);
 
     await agent
@@ -89,8 +128,6 @@ test("Bob only sees his own tasks", async () => {
     assert.ok(!titles.includes("Finish homework"));
 });
 
-
-// EMPTY TASK TEST
 test("Empty tasks are rejected", async () => {
     const agent = request.agent(app);
 
@@ -111,16 +148,19 @@ test("Empty tasks are rejected", async () => {
     assert.equal(response.body.error, "Task cannot be empty");
 });
 
-
-// USER CANNOT DELETE ANOTHER USER'S TASK
 test("Alice cannot delete Bob's task", async () => {
-    const bobTask = db
-        .prepare(
-            `SELECT id
-             FROM tasks
-             WHERE title = ?`
-        )
-        .get("Study for exam");
+    await resetTestTasks();
+
+    const bobTaskResult = await db.execute({
+        sql: `
+            SELECT id
+            FROM tasks
+            WHERE title = ?
+        `,
+        args: ["Study for exam"]
+    });
+
+    const bobTask = bobTaskResult.rows[0];
 
     assert.ok(bobTask);
 
@@ -138,14 +178,14 @@ test("Alice cannot delete Bob's task", async () => {
 
     assert.equal(response.status, 404);
 
-    // Make sure Bob's task still exists
-    const taskStillExists = db
-        .prepare(
-            `SELECT id
-             FROM tasks
-             WHERE id = ?`
-        )
-        .get(bobTask.id);
+    const taskStillExistsResult = await db.execute({
+        sql: `
+            SELECT id
+            FROM tasks
+            WHERE id = ?
+        `,
+        args: [bobTask.id]
+    });
 
-    assert.ok(taskStillExists);
+    assert.ok(taskStillExistsResult.rows[0]);
 });

@@ -2,15 +2,13 @@ const express = require("express");
 const session = require("express-session");
 const bcrypt = require("bcryptjs");
 const path = require("path");
-const db = require("./database");
+const { db, ready } = require("./database");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Read JSON sent from the browser
 app.use(express.json());
 
-// Login session
 app.use(
     session({
         secret: process.env.SESSION_SECRET || "development-secret-change-me",
@@ -18,15 +16,15 @@ app.use(
         saveUninitialized: false,
         cookie: {
             httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "lax",
             maxAge: 1000 * 60 * 60
         }
     })
 );
 
-// Serve our frontend
 app.use(express.static(path.join(__dirname, "public")));
 
-// Protect routes that require login
 function requireLogin(req, res, next) {
     if (!req.session.userId) {
         return res.status(401).json({
@@ -39,42 +37,52 @@ function requireLogin(req, res, next) {
 
 // LOGIN
 app.post("/api/login", async (req, res) => {
-    const { username, password } = req.body;
+    try {
+        await ready;
 
-    if (!username || !password) {
-        return res.status(400).json({
-            error: "Username and password are required"
+        const { username, password } = req.body;
+
+        if (!username || !password) {
+            return res.status(400).json({
+                error: "Username and password are required"
+            });
+        }
+
+        const result = await db.execute({
+            sql: "SELECT * FROM users WHERE username = ?",
+            args: [username]
         });
-    }
 
-    const user = db
-        .prepare("SELECT * FROM users WHERE username = ?")
-        .get(username);
+        const user = result.rows[0];
 
-    if (!user) {
-        return res.status(401).json({
-            error: "Invalid username or password"
+        if (!user) {
+            return res.status(401).json({
+                error: "Invalid username or password"
+            });
+        }
+
+        const passwordMatches = await bcrypt.compare(
+            password,
+            user.password
+        );
+
+        if (!passwordMatches) {
+            return res.status(401).json({
+                error: "Invalid username or password"
+            });
+        }
+
+        req.session.userId = Number(user.id);
+        req.session.username = String(user.username);
+
+        res.json({
+            message: "Login successful",
+            username: user.username
         });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Server error" });
     }
-
-    const passwordMatches = await bcrypt.compare(
-        password,
-        user.password
-    );
-
-    if (!passwordMatches) {
-        return res.status(401).json({
-            error: "Invalid username or password"
-        });
-    }
-
-    req.session.userId = user.id;
-    req.session.username = user.username;
-
-    res.json({
-        message: "Login successful",
-        username: user.username
-    });
 });
 
 // CHECK CURRENT USER
@@ -100,104 +108,145 @@ app.post("/api/logout", (req, res) => {
     });
 });
 
-// GET ONLY THE LOGGED-IN USER'S TASKS
-app.get("/api/tasks", requireLogin, (req, res) => {
-    const tasks = db
-        .prepare(
-            `SELECT id, title, completed
-             FROM tasks
-             WHERE user_id = ?
-             ORDER BY id DESC`
-        )
-        .all(req.session.userId);
+// GET TASKS
+app.get("/api/tasks", requireLogin, async (req, res) => {
+    try {
+        await ready;
 
-    res.json(tasks);
+        const result = await db.execute({
+            sql: `
+                SELECT id, title, completed
+                FROM tasks
+                WHERE user_id = ?
+                ORDER BY id DESC
+            `,
+            args: [req.session.userId]
+        });
+
+        res.json(result.rows);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Server error" });
+    }
 });
 
 // ADD TASK
-app.post("/api/tasks", requireLogin, (req, res) => {
-    const title = String(req.body.title || "").trim();
+app.post("/api/tasks", requireLogin, async (req, res) => {
+    try {
+        await ready;
 
-    if (!title) {
-        return res.status(400).json({
-            error: "Task cannot be empty"
+        const title = String(req.body.title || "").trim();
+
+        if (!title) {
+            return res.status(400).json({
+                error: "Task cannot be empty"
+            });
+        }
+
+        const result = await db.execute({
+            sql: `
+                INSERT INTO tasks (user_id, title, completed)
+                VALUES (?, ?, 0)
+            `,
+            args: [req.session.userId, title]
         });
+
+        const taskResult = await db.execute({
+            sql: `
+                SELECT id, title, completed
+                FROM tasks
+                WHERE id = ? AND user_id = ?
+            `,
+            args: [result.lastInsertRowid, req.session.userId]
+        });
+
+        res.status(201).json(taskResult.rows[0]);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Server error" });
     }
-
-    const result = db
-        .prepare(
-            `INSERT INTO tasks (user_id, title, completed)
-             VALUES (?, ?, 0)`
-        )
-        .run(req.session.userId, title);
-
-    const task = db
-        .prepare(
-            `SELECT id, title, completed
-             FROM tasks
-             WHERE id = ? AND user_id = ?`
-        )
-        .get(result.lastInsertRowid, req.session.userId);
-
-    res.status(201).json(task);
 });
 
 // COMPLETE / UNCOMPLETE TASK
-app.patch("/api/tasks/:id", requireLogin, (req, res) => {
-    const taskId = Number(req.params.id);
-    const completed = req.body.completed ? 1 : 0;
+app.patch("/api/tasks/:id", requireLogin, async (req, res) => {
+    try {
+        await ready;
 
-    const result = db
-        .prepare(
-            `UPDATE tasks
-             SET completed = ?
-             WHERE id = ? AND user_id = ?`
-        )
-        .run(completed, taskId, req.session.userId);
+        const taskId = Number(req.params.id);
+        const completed = req.body.completed ? 1 : 0;
 
-    if (result.changes === 0) {
-        return res.status(404).json({
-            error: "Task not found"
+        const result = await db.execute({
+            sql: `
+                UPDATE tasks
+                SET completed = ?
+                WHERE id = ? AND user_id = ?
+            `,
+            args: [completed, taskId, req.session.userId]
         });
+
+        if (result.rowsAffected === 0) {
+            return res.status(404).json({
+                error: "Task not found"
+            });
+        }
+
+        const taskResult = await db.execute({
+            sql: `
+                SELECT id, title, completed
+                FROM tasks
+                WHERE id = ? AND user_id = ?
+            `,
+            args: [taskId, req.session.userId]
+        });
+
+        res.json(taskResult.rows[0]);
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Server error" });
     }
-
-    const task = db
-        .prepare(
-            `SELECT id, title, completed
-             FROM tasks
-             WHERE id = ? AND user_id = ?`
-        )
-        .get(taskId, req.session.userId);
-
-    res.json(task);
 });
 
 // DELETE TASK
-app.delete("/api/tasks/:id", requireLogin, (req, res) => {
-    const taskId = Number(req.params.id);
+app.delete("/api/tasks/:id", requireLogin, async (req, res) => {
+    try {
+        await ready;
 
-    const result = db
-        .prepare(
-            `DELETE FROM tasks
-             WHERE id = ? AND user_id = ?`
-        )
-        .run(taskId, req.session.userId);
+        const taskId = Number(req.params.id);
 
-    if (result.changes === 0) {
-        return res.status(404).json({
-            error: "Task not found"
+        const result = await db.execute({
+            sql: `
+                DELETE FROM tasks
+                WHERE id = ? AND user_id = ?
+            `,
+            args: [taskId, req.session.userId]
         });
-    }
 
-    res.json({
-        message: "Task deleted"
-    });
+        if (result.rowsAffected === 0) {
+            return res.status(404).json({
+                error: "Task not found"
+            });
+        }
+
+        res.json({
+            message: "Task deleted"
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Server error" });
+    }
 });
 
 if (require.main === module) {
-    app.listen(PORT, () => {
-        console.log(`Server running at http://localhost:${PORT}`);
-    });
+    ready
+        .then(() => {
+            app.listen(PORT, () => {
+                console.log(`Server running at http://localhost:${PORT}`);
+            });
+        })
+        .catch((error) => {
+            console.error("Database initialization failed:", error);
+            process.exit(1);
+        });
 }
 
 module.exports = app;
