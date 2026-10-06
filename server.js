@@ -1,5 +1,5 @@
 const express = require("express");
-const session = require("express-session");
+const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 const path = require("path");
 const { db, ready } = require("./database");
@@ -7,31 +7,59 @@ const { db, ready } = require("./database");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+const JWT_SECRET =
+    process.env.SESSION_SECRET || "development-secret-change-me";
+
 app.use(express.json());
-
-app.use(
-    session({
-        secret: process.env.SESSION_SECRET || "development-secret-change-me",
-        resave: false,
-        saveUninitialized: false,
-        cookie: {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "lax",
-            maxAge: 1000 * 60 * 60
-        }
-    })
-);
-
 app.use(express.static(path.join(__dirname, "public")));
 
+// Read JWT from cookie
+function getCurrentUser(req) {
+    const cookieHeader = req.headers.cookie || "";
+
+    const cookies = Object.fromEntries(
+        cookieHeader
+            .split(";")
+            .map(cookie => cookie.trim())
+            .filter(Boolean)
+            .map(cookie => {
+                const index = cookie.indexOf("=");
+
+                if (index === -1) {
+                    return [cookie, ""];
+                }
+
+                return [
+                    cookie.slice(0, index),
+                    decodeURIComponent(cookie.slice(index + 1))
+                ];
+            })
+    );
+
+    const token = cookies.auth_token;
+
+    if (!token) {
+        return null;
+    }
+
+    try {
+        return jwt.verify(token, JWT_SECRET);
+    } catch (error) {
+        return null;
+    }
+}
+
+// Protect routes that require login
 function requireLogin(req, res, next) {
-    if (!req.session.userId) {
+    const user = getCurrentUser(req);
+
+    if (!user) {
         return res.status(401).json({
             error: "You must log in first"
         });
     }
 
+    req.user = user;
     next();
 }
 
@@ -72,8 +100,23 @@ app.post("/api/login", async (req, res) => {
             });
         }
 
-        req.session.userId = Number(user.id);
-        req.session.username = String(user.username);
+        const token = jwt.sign(
+            {
+                userId: Number(user.id),
+                username: String(user.username)
+            },
+            JWT_SECRET,
+            {
+                expiresIn: "1h"
+            }
+        );
+
+        res.cookie("auth_token", token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "lax",
+            maxAge: 1000 * 60 * 60
+        });
 
         res.json({
             message: "Login successful",
@@ -87,28 +130,34 @@ app.post("/api/login", async (req, res) => {
 
 // CHECK CURRENT USER
 app.get("/api/me", (req, res) => {
-    if (!req.session.userId) {
+    const user = getCurrentUser(req);
+
+    if (!user) {
         return res.status(401).json({
             error: "Not logged in"
         });
     }
 
     res.json({
-        id: req.session.userId,
-        username: req.session.username
+        id: user.userId,
+        username: user.username
     });
 });
 
 // LOGOUT
 app.post("/api/logout", (req, res) => {
-    req.session.destroy(() => {
-        res.json({
-            message: "Logged out"
-        });
+    res.clearCookie("auth_token", {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax"
+    });
+
+    res.json({
+        message: "Logged out"
     });
 });
 
-// GET TASKS
+// GET ONLY LOGGED-IN USER'S TASKS
 app.get("/api/tasks", requireLogin, async (req, res) => {
     try {
         await ready;
@@ -120,7 +169,7 @@ app.get("/api/tasks", requireLogin, async (req, res) => {
                 WHERE user_id = ?
                 ORDER BY id DESC
             `,
-            args: [req.session.userId]
+            args: [req.user.userId]
         });
 
         res.json(result.rows);
@@ -148,7 +197,7 @@ app.post("/api/tasks", requireLogin, async (req, res) => {
                 INSERT INTO tasks (user_id, title, completed)
                 VALUES (?, ?, 0)
             `,
-            args: [req.session.userId, title]
+            args: [req.user.userId, title]
         });
 
         const taskResult = await db.execute({
@@ -157,7 +206,7 @@ app.post("/api/tasks", requireLogin, async (req, res) => {
                 FROM tasks
                 WHERE id = ? AND user_id = ?
             `,
-            args: [result.lastInsertRowid, req.session.userId]
+            args: [result.lastInsertRowid, req.user.userId]
         });
 
         res.status(201).json(taskResult.rows[0]);
@@ -181,7 +230,7 @@ app.patch("/api/tasks/:id", requireLogin, async (req, res) => {
                 SET completed = ?
                 WHERE id = ? AND user_id = ?
             `,
-            args: [completed, taskId, req.session.userId]
+            args: [completed, taskId, req.user.userId]
         });
 
         if (result.rowsAffected === 0) {
@@ -196,7 +245,7 @@ app.patch("/api/tasks/:id", requireLogin, async (req, res) => {
                 FROM tasks
                 WHERE id = ? AND user_id = ?
             `,
-            args: [taskId, req.session.userId]
+            args: [taskId, req.user.userId]
         });
 
         res.json(taskResult.rows[0]);
@@ -218,7 +267,7 @@ app.delete("/api/tasks/:id", requireLogin, async (req, res) => {
                 DELETE FROM tasks
                 WHERE id = ? AND user_id = ?
             `,
-            args: [taskId, req.session.userId]
+            args: [taskId, req.user.userId]
         });
 
         if (result.rowsAffected === 0) {
@@ -243,7 +292,7 @@ if (require.main === module) {
                 console.log(`Server running at http://localhost:${PORT}`);
             });
         })
-        .catch((error) => {
+        .catch(error => {
             console.error("Database initialization failed:", error);
             process.exit(1);
         });

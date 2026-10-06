@@ -12,7 +12,8 @@
     "bcryptjs": "^3.0.2",
     "better-sqlite3": "^12.4.1",
     "express": "^5.1.0",
-    "express-session": "^1.18.2"
+    "express-session": "^1.18.2",
+    "jsonwebtoken": "^9.0.3"
   },
   "allowScripts": {
     "better-sqlite3@12.11.1": true
