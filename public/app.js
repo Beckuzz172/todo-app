@@ -48,6 +48,10 @@ loginForm.addEventListener("submit", async (event) => {
 
         passwordInput.value = "";
 
+        // Clear old user's tasks before showing the new user
+        taskList.innerHTML = "";
+        currentUser.textContent = "";
+
         showTodoScreen(data.username);
         await loadTasks();
 
@@ -72,6 +76,10 @@ async function checkLogin() {
 
         const user = await response.json();
 
+        // Clear old data before showing current user
+        taskList.innerHTML = "";
+        currentUser.textContent = "";
+
         showTodoScreen(user.username);
         await loadTasks();
 
@@ -92,6 +100,12 @@ logoutButton.addEventListener("click", async () => {
 
     usernameInput.value = "";
     passwordInput.value = "";
+
+    // Clear the previous user's data
+    taskList.innerHTML = "";
+    currentUser.textContent = "";
+    taskInput.value = "";
+    taskError.textContent = "";
 
     showLoginScreen();
 });
