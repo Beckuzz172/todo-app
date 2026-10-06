@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Todo App</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <div class="container">
+
+        <!-- LOGIN SCREEN -->
+        <div id="login-screen" class="card">
+            <h1>My Todo App</h1>
+            <p class="subtitle">Log in to manage your tasks</p>
+
+            <form id="login-form">
+                <input
+                    id="username"
+                    type="text"
+                    placeholder="Username"
+                    required
+                >
+
+                <input
+                    id="password"
+                    type="password"
+                    placeholder="Password"
+                    required
+                >
+
+                <button type="submit">Log In</button>
+            </form>
+
+            <p id="login-error" class="error"></p>
+
+            <div class="demo-users">
+                <p><strong>Demo accounts</strong></p>
+                <p>Alice: password123</p>
+                <p>Bob: password456</p>
+            </div>
+        </div>
+
+
+        <!-- TODO SCREEN -->
+        <div id="todo-screen" class="card hidden">
+
+            <div class="top-bar">
+                <div>
+                    <h1>My Tasks</h1>
+                    <p>
+                        Logged in as
+                        <strong id="current-user"></strong>
+                    </p>
+                </div>
+
+                <button id="logout-button" class="logout">
+                    Log Out
+                </button>
+            </div>
+
+            <form id="task-form" class="task-form">
+                <input
+                    id="task-input"
+                    type="text"
+                    placeholder="What do you need to do?"
+                >
+
+                <button type="submit">
+                    Add Task
+                </button>
+            </form>
+
+            <p id="task-error" class="error"></p>
+
+            <ul id="task-list"></ul>
+
+        </div>
+
+    </div>
+
+    <script src="app.js"></script>
+
+</body>
+</html>
