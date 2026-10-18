@@ -1,8 +1,8 @@
 # Flowboard — CU FDE2 Kanban
 
-A full-stack Kanban board with a React + TypeScript frontend, a server-side HTTP API, and a persistent Cloudflare D1 SQL database. The application runs on Cloudflare Workers through Sites. Vinext uses Vite for development and production builds.
+A full-stack Kanban board with a React + TypeScript frontend, a server-side HTTP API, and a persistent Cloudflare D1 SQL database. The public React + TypeScript + Vite frontend runs on Vercel; its server-side API bridge connects to the persistent Cloudflare D1 backend. The root application provides that backend through Sites; the standalone frontend is in `vercel-frontend/`.
 
-**Frontend:** https://flowboard-kanban-beckuzz.shrewdcup64.chatgpt.site
+**Frontend:** https://flowboard-kanban-beckuzz.vercel.app
 
 **Assignment source:** https://github.com/Beckuzz172/todo-app/tree/cu-fde2-kanban
 
@@ -59,6 +59,9 @@ node tests/api.integration.mjs
 The integration test makes 55 assertions covering CRUD, all status transitions, reload persistence, field boundaries and malformed payloads, missing cards, board isolation, and cross-origin protection. It creates its own boards and removes its test cards.
 
 ## Cloud deployment
+
+The public frontend is deployed to Vercel from `vercel-frontend/` on this branch. Its `/api/cards` functions forward requests to the existing public Cloudflare backend. See `vercel-frontend/README.md` for the deployment configuration. Keep the backend Site running so database operations remain available.
+
 
 `.openai/hosting.json` declares the existing Sites project and D1 `DB` binding. Sites provisions the hosted D1 database and applies the committed SQL migration during publication. No API keys or database passwords are embedded in the frontend or repository. The source is built and published through the Sites source/version deployment workflow.
 
