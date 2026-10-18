@@ -4,9 +4,11 @@ This is a standalone React + TypeScript + Vite frontend. It retains Flowboard's 
 
 ## Deployment
 
-Import the `cu-fde2-kanban` branch of `Beckuzz172/todo-app`, set the Root Directory to `vercel-frontend`, choose the Vite framework, and use the Hobby plan for this personal assignment. Requested project name: `flowboard-kanban-beckuzz` (subject to availability). No API keys or environment variables are needed. Set the production branch to `cu-fde2-kanban` and make the production deployment public.
+Import the `cu-fde2-kanban` branch of `Beckuzz172/todo-app`, set the Root Directory to `vercel-frontend`, choose the Vite framework, and use the Hobby plan for this personal assignment. Project name: `flowboard-kanban-beckuzz`. No API keys or environment variables are needed. Set the production branch to `cu-fde2-kanban` and make the production deployment public.
 
-The Vercel deployment is not live until the hosting account is connected and deployment succeeds. The existing deployed application remains at https://flowboard-kanban-beckuzz.shrewdcup64.chatgpt.site.
+**Live public frontend:** https://flowboard-kanban-beckuzz.vercel.app
+
+The backend remains at https://flowboard-kanban-beckuzz.shrewdcup64.chatgpt.site. The production frontend and API were verified anonymously, including all 55 integration assertions.
 
 ## Architecture
 
@@ -24,7 +26,7 @@ Because cookies belong to each hostname, a browser visiting the new Vercel addre
 npm ci
 npm test
 npm run build
-BASE_URL=https://your-confirmed-vercel-domain.vercel.app node tests/api.integration.mjs
+BASE_URL=https://flowboard-kanban-beckuzz.vercel.app node tests/api.integration.mjs
 ```
 
 The API bridge has five focused tests. The integration suite tests 55 CRUD, persistence, validation, isolation, and cross-origin assertions.
