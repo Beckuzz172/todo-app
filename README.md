@@ -2,7 +2,7 @@
 
 A full-stack Kanban board with a React + TypeScript frontend, a server-side HTTP API, and a persistent Cloudflare D1 SQL database. The application runs on Cloudflare Workers through Sites. Vinext uses Vite for development and production builds.
 
-**Frontend:** https://flowboard-cu-fde2-beckuzz.shrewdcup64.chatgpt.site
+**Frontend:** https://flowboard-kanban-beckuzz.shrewdcup64.chatgpt.site
 
 **Assignment source:** https://github.com/Beckuzz172/todo-app/tree/cu-fde2-kanban
 
